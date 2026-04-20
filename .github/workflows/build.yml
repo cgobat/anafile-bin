@@ -1,0 +1,70 @@
+name: Build anafile
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      SOURCE_URL: "http://cdsarc.unistra.fr/ftp/sw/anafile.tar.gz"
+
+    steps:
+      - name: Fetch source archive
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -fsSL "$SOURCE_URL" -o anafile.tar.gz
+          SOURCE_DIR="$(tar -tzf anafile.tar.gz | head -1 | cut -d/ -f1)"
+          test -n "$SOURCE_DIR"
+          tar -xzf anafile.tar.gz
+          test -d "$SOURCE_DIR"
+          echo "SOURCE_DIR=$SOURCE_DIR" >> "$GITHUB_ENV"
+
+      - name: Configure and build
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd "$SOURCE_DIR"
+
+          chmod +x ./configure
+          ./configure
+
+          ln -sf ADC_Keywords adckeys.txt
+          awk 'BEGIN{print "/* Generated from adckeys.txt */"; print "static char *ADCkeys[] = {" } END{print "  (char *)0\n};"} {sub(/[ \t]*[(][Ss][e].*/, ""); sub(/ *$/, ""); printf("  \"%s\",\n", $0)}' adckeys.txt > adckeys.h
+
+          COPT='-Wall -I. -O -DBZERO=1 -DSYBASE=0 -DDIRENT=1 -Dint8=long -Dint4=int -Dintp=long -Dint8l=1 -DWWWGET="wget" -fcommon -Wno-error=incompatible-pointer-types'
+
+          for src in buffer.c units.c filutil.c util.c strut.c error.c catstd.c tabutil.c tabform.c domain.c tabout.c vizcat.c; do
+            gcc ${COPT} -c "${src}"
+          done
+
+          ar ruv libana.a buffer.o units.o filutil.o util.o strut.o error.o catstd.o tabutil.o tabform.o domain.o tabout.o vizcat.o
+          ranlib libana.a
+
+          gcc ${COPT} anafile.c libana.a -lm -o anafile
+          gcc ${COPT} tofits.c catstd.o tabform.o fits.c domain.o libana.a -lm -o tofits
+          gcc ${COPT} fcat.c libana.a -lm -o fcat
+          gcc ${COPT} trcat.c -o trcat
+          gcc ${COPT} -DTEST=1 units.c -lm -o units
+          gcc ${COPT} lss.c libana.a -lm -o lss
+          gcc ${COPT} readme2f.c libana.a -lm -o readme2f
+          gcc ${COPT} preadme.c catstd.c tabform.c libana.a -lm -o preadme
+          gcc ${COPT} fits2a.c filutil.c strut.c -lm -o fits2a
+          gcc -O ${COPT} -DTEST=1 tabmap.c libana.a -lm -o tabmap
+          gcc -O ${COPT} -DTEST=1 -DCATSTD_H='"/usr/local/include/catstd.h"' vizcat.c libana.a -lm -o vizcat
+          gcc ${COPT} catfiles.c libana.a -lm -o catfiles
+
+          ./units '?' > units.txt
+          ./units -tex '?' > units.htx
+
+          mkdir -p dist
+          cp anafile tofits fcat trcat units lss readme2f preadme fits2a tabmap vizcat catfiles units.txt units.htx dist/
+          tar -C dist -czf anafile-linux-x86_64.tar.gz .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.SOURCE_DIR }}
+          path: anafile-linux-x86_64.tar.gz
+          if-no-files-found: error
