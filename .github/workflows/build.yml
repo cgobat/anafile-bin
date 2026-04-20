@@ -14,18 +14,23 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          shopt -s nullglob dotglob
           curl -fsSL "$SOURCE_URL" -o anafile.tar.gz
-          SOURCE_DIR="$(tar -tzf anafile.tar.gz | head -1 | cut -d/ -f1)"
-          test -n "$SOURCE_DIR"
-          tar -xzf anafile.tar.gz
-          test -d "$SOURCE_DIR"
+
+          mkdir -p source-tree
+          tar -xzf anafile.tar.gz -C source-tree
+
+          entries=(source-tree/*)
+          test "${#entries[@]}" -eq 1
+          test -d "${entries[0]}"
+          SOURCE_DIR="$(basename "${entries[0]}")"
           echo "SOURCE_DIR=$SOURCE_DIR" >> "$GITHUB_ENV"
 
       - name: Configure and build
         shell: bash
         run: |
           set -euxo pipefail
-          cd "$SOURCE_DIR"
+          cd "source-tree/$SOURCE_DIR"
 
           chmod +x ./configure
           ./configure
@@ -58,13 +63,13 @@ jobs:
           ./units '?' > units.txt
           ./units -tex '?' > units.htx
 
-          mkdir -p dist
-          cp anafile tofits fcat trcat units lss readme2f preadme fits2a tabmap vizcat catfiles units.txt units.htx dist/
-          tar -C dist -czf anafile-linux-x86_64.tar.gz .
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          cp anafile tofits fcat trcat units lss readme2f preadme fits2a tabmap vizcat catfiles units.txt units.htx "$GITHUB_WORKSPACE/dist/."
+          ls -l "$GITHUB_WORKSPACE/dist"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: ${{ env.SOURCE_DIR }}
-          path: anafile-linux-x86_64.tar.gz
+          name: ${{ env.SOURCE_DIR }}-linux-x86_64
+          path: dist/
           if-no-files-found: error
