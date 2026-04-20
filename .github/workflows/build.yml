@@ -65,6 +65,7 @@ jobs:
 
           mkdir -p "$GITHUB_WORKSPACE/dist"
           cp anafile tofits fcat trcat units lss readme2f preadme fits2a tabmap vizcat catfiles units.txt units.htx "$GITHUB_WORKSPACE/dist/."
+          cp *.1 "$GITHUB_WORKSPACE/dist/."
           ls -l "$GITHUB_WORKSPACE/dist"
 
       - name: Upload artifact
